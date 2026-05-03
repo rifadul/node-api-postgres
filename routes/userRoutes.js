@@ -1,27 +1,46 @@
 import express from 'express'
+
+const router = express.Router() // ✅ THIS LINE IS MISSING
+
 import {
     getUsers,
     getUserById,
     createUser,
     updateUser,
+    patchUser,
     deleteUser,
 } from '../controllers/userController.js'
 
 import validate from '../middleware/validate.js'
+
 import {
     createUserSchema,
-    patchUserSchema,
     updateUserSchema,
-} from '../validators/userValidator.js'
+    patchUserSchema,
+    userIdSchema,
+    paginationSchema,
+} from '../validators/user.validator.js'
 
-const router = express.Router()
+// routes
+router.get('/', validate(paginationSchema), getUsers)
 
-router.get('/', getUsers)
-router.get('/:id', getUserById)
+router.get('/:id', validate(userIdSchema), getUserById)
+
 router.post('/', validate(createUserSchema), createUser)
-router.put('/:id', validate(updateUserSchema), updateUser)
-router.patch('/:id', validate(patchUserSchema), updateUser)
 
-router.delete('/:id', deleteUser)
+router.put('/:id',
+    validate(userIdSchema),
+    validate(updateUserSchema),
+    updateUser
+)
+
+router.patch('/:id',
+    validate(userIdSchema),
+    validate(patchUserSchema),
+    patchUser
+)
+
+router.delete('/:id', validate(userIdSchema), deleteUser)
+
 
 export default router
