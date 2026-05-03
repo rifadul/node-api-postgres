@@ -22,10 +22,12 @@ export const createUserSchema = z.object({
 
 // UPDATE (PUT)
 export const updateUserSchema = z.object({
-    body: z.object({
-        name,
-        email,
-    }),
+    body: z
+        .object({
+            name,
+            email,
+        })
+        .strict(),
 })
 
 // PATCH
@@ -35,6 +37,7 @@ export const patchUserSchema = z.object({
             name: name.optional(),
             email: email.optional(),
         })
+        .strict()
         .refine(
             (data) => Object.keys(data).length > 0,
             { message: 'At least one field must be provided' }

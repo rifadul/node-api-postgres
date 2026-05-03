@@ -1,7 +1,11 @@
 import * as UserModel from '../models/userModel.js'
 import asyncHandler from '../middleware/asyncHandler.js'
+import AppError from '../utils/AppError.js'
+import { ERROR_CODES } from '../constants/errorCodes.js'
 
-// GET /users
+/**
+ * GET /users
+ */
 export const getUsers = asyncHandler(async (req, res) => {
     const { query } = req.validated
 
@@ -20,7 +24,7 @@ export const getUsers = asyncHandler(async (req, res) => {
         UserModel.countUsers(),
     ])
 
-    const total = Number(countResult.rows[0].count)
+    const total = countResult
 
     res.status(200).json({
         page,
@@ -31,27 +35,25 @@ export const getUsers = asyncHandler(async (req, res) => {
     })
 })
 
-
-// GET /users/:id
+/**
+ * GET /users/:id
+ */
 export const getUserById = asyncHandler(async (req, res) => {
     const { params } = req.validated
     const id = Number(params.id)
-    console.log('-------------jjjj', { params });
-
 
     const result = await UserModel.findUserById(id)
 
     if (result.rowCount === 0) {
-        const error = new Error('User not found')
-        error.status = 404
-        throw error
+        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
     }
 
     res.status(200).json(result.rows[0])
 })
 
-
-// POST /users
+/**
+ * POST /users
+ */
 export const createUser = asyncHandler(async (req, res) => {
     const { body } = req.validated
     const { name, email } = body
@@ -64,8 +66,9 @@ export const createUser = asyncHandler(async (req, res) => {
     })
 })
 
-
-// PUT /users/:id
+/**
+ * PUT /users/:id
+ */
 export const updateUser = asyncHandler(async (req, res) => {
     const { params, body } = req.validated
     const id = Number(params.id)
@@ -73,9 +76,7 @@ export const updateUser = asyncHandler(async (req, res) => {
     const result = await UserModel.updateUser(id, body)
 
     if (result.rowCount === 0) {
-        const error = new Error('User not found')
-        error.status = 404
-        throw error
+        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
     }
 
     res.status(200).json({
@@ -84,8 +85,9 @@ export const updateUser = asyncHandler(async (req, res) => {
     })
 })
 
-
-// PATCH /users/:id
+/**
+ * PATCH /users/:id
+ */
 export const patchUser = asyncHandler(async (req, res) => {
     const { params, body } = req.validated
     const id = Number(params.id)
@@ -93,9 +95,7 @@ export const patchUser = asyncHandler(async (req, res) => {
     const result = await UserModel.updateUser(id, body)
 
     if (result.rowCount === 0) {
-        const error = new Error('User not found')
-        error.status = 404
-        throw error
+        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
     }
 
     res.status(200).json({
@@ -104,8 +104,9 @@ export const patchUser = asyncHandler(async (req, res) => {
     })
 })
 
-
-// DELETE /users/:id
+/**
+ * DELETE /users/:id
+ */
 export const deleteUser = asyncHandler(async (req, res) => {
     const { params } = req.validated
     const id = Number(params.id)
@@ -113,9 +114,7 @@ export const deleteUser = asyncHandler(async (req, res) => {
     const result = await UserModel.deleteUser(id)
 
     if (result.rowCount === 0) {
-        const error = new Error('User not found')
-        error.status = 404
-        throw error
+        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
     }
 
     res.status(200).json({
