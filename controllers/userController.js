@@ -1,6 +1,7 @@
 import asyncHandler from '../middleware/asyncHandler.js'
 import * as UserService from '../services/userService.js'
 
+// GET /users
 export const getUsers = asyncHandler(async (req, res) => {
     const { query } = req.validated
 
@@ -15,6 +16,7 @@ export const getUsers = asyncHandler(async (req, res) => {
     const { data, total } = await UserService.getUsersService(page, limit)
 
     res.status(200).json({
+        success: true,
         page,
         limit,
         total,
@@ -23,59 +25,68 @@ export const getUsers = asyncHandler(async (req, res) => {
     })
 })
 
+// GET /users/:id
 export const getUserById = asyncHandler(async (req, res) => {
-    const { params } = req.validated
-    const id = Number(params.id)
+    const { id } = req.validated.params
 
-    const user = await UserService.getUserByIdService(id)
+    const user = await UserService.getUserByIdService(Number(id))
 
-    res.status(200).json(user)
+    res.status(200).json({
+        success: true,
+        data: user,
+    })
 })
 
+// POST /users
 export const createUser = asyncHandler(async (req, res) => {
-    const { body } = req.validated
-    const { name, email } = body
+    const { name, email } = req.validated.body
 
     const user = await UserService.createUserService(name, email)
 
     res.status(201).json({
+        success: true,
         message: 'User created successfully',
-        user,
+        data: user,
     })
 })
 
+// PUT
 export const updateUser = asyncHandler(async (req, res) => {
-    const { params, body } = req.validated
-    const id = Number(params.id)
+    const { id } = req.validated.params
+    const body = req.validated.body
 
-    const user = await UserService.updateUserService(id, body)
+    const user = await UserService.updateUserService(Number(id), body)
 
     res.status(200).json({
+        success: true,
         message: 'User fully updated',
-        user,
+        data: user,
     })
 })
 
+// PATCH
 export const patchUser = asyncHandler(async (req, res) => {
-    const { params, body } = req.validated
-    const id = Number(params.id)
+    const { id } = req.validated.params
+    const body = req.validated.body
 
-    const user = await UserService.patchUserService(id, body) // 🔥 CHANGED
+    const user = await UserService.patchUserService(Number(id), body)
 
     res.status(200).json({
+        success: true,
         message: 'User partially updated',
-        user,
+        data: user,
     })
 })
 
+// DELETE
 export const deleteUser = asyncHandler(async (req, res) => {
-    const { params } = req.validated
-    const id = Number(params.id)
+    const { id } = req.validated.params
 
-    const user = await UserService.deleteUserService(id)
+    const user = await UserService.deleteUserService(Number(id))
 
     res.status(200).json({
+        success: true,
         message: 'User deleted successfully',
-        user,
+        data: user,
     })
 })
