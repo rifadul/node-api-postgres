@@ -1,11 +1,6 @@
-import * as UserModel from '../models/userModel.js'
 import asyncHandler from '../middleware/asyncHandler.js'
-import AppError from '../utils/AppError.js'
-import { ERROR_CODES } from '../constants/errorCodes.js'
+import * as UserService from '../services/userService.js'
 
-/**
- * GET /users
- */
 export const getUsers = asyncHandler(async (req, res) => {
     const { query } = req.validated
 
@@ -17,108 +12,70 @@ export const getUsers = asyncHandler(async (req, res) => {
     if (page < 1) page = 1
     if (limit < 1 || limit > 100) limit = 10
 
-    const offset = (page - 1) * limit
-
-    const [usersResult, countResult] = await Promise.all([
-        UserModel.findAllUsers(limit, offset),
-        UserModel.countUsers(),
-    ])
-
-    const total = countResult
+    const { data, total } = await UserService.getUsersService(page, limit)
 
     res.status(200).json({
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit),
-        data: usersResult.rows,
+        data,
     })
 })
 
-/**
- * GET /users/:id
- */
 export const getUserById = asyncHandler(async (req, res) => {
     const { params } = req.validated
     const id = Number(params.id)
 
-    const result = await UserModel.findUserById(id)
+    const user = await UserService.getUserByIdService(id)
 
-    if (result.rowCount === 0) {
-        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
-    }
-
-    res.status(200).json(result.rows[0])
+    res.status(200).json(user)
 })
 
-/**
- * POST /users
- */
 export const createUser = asyncHandler(async (req, res) => {
     const { body } = req.validated
     const { name, email } = body
 
-    const result = await UserModel.createUser(name, email)
+    const user = await UserService.createUserService(name, email)
 
     res.status(201).json({
         message: 'User created successfully',
-        user: result.rows[0],
+        user,
     })
 })
 
-/**
- * PUT /users/:id
- */
 export const updateUser = asyncHandler(async (req, res) => {
     const { params, body } = req.validated
     const id = Number(params.id)
 
-    const result = await UserModel.updateUser(id, body)
-
-    if (result.rowCount === 0) {
-        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
-    }
+    const user = await UserService.updateUserService(id, body)
 
     res.status(200).json({
         message: 'User fully updated',
-        user: result.rows[0],
+        user,
     })
 })
 
-/**
- * PATCH /users/:id
- */
 export const patchUser = asyncHandler(async (req, res) => {
     const { params, body } = req.validated
     const id = Number(params.id)
 
-    const result = await UserModel.updateUser(id, body)
-
-    if (result.rowCount === 0) {
-        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
-    }
+    const user = await UserService.patchUserService(id, body) // 🔥 CHANGED
 
     res.status(200).json({
         message: 'User partially updated',
-        user: result.rows[0],
+        user,
     })
 })
 
-/**
- * DELETE /users/:id
- */
 export const deleteUser = asyncHandler(async (req, res) => {
     const { params } = req.validated
     const id = Number(params.id)
 
-    const result = await UserModel.deleteUser(id)
-
-    if (result.rowCount === 0) {
-        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
-    }
+    const user = await UserService.deleteUserService(id)
 
     res.status(200).json({
         message: 'User deleted successfully',
-        user: result.rows[0],
+        user,
     })
 })
