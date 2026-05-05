@@ -1,5 +1,6 @@
 import express from 'express'
 import userRoutes from './routes/userRoutes.js'
+import authRoutes from './routes/authRoutes.js'
 import errorHandler from './middleware/errorHandler.js'
 import cors from 'cors'
 import rateLimit from 'express-rate-limit'
@@ -23,6 +24,7 @@ app.use(
 app.use(apiKeyMiddleware)
 app.use(limiter)
 app.use('/users', userRoutes)
+app.use('/auth', authRoutes)
 
 
 // ✅ global error handler (must be last)

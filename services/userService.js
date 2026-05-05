@@ -30,14 +30,6 @@ export const getUserByIdService = async (id) => {
     return result.rows[0]
 }
 
-// CREATE
-export const createUserService = async (name, email) => {
-    const normalizedEmail = email.toLowerCase()
-
-    const result = await UserModel.createUser(name, normalizedEmail)
-    return result.rows[0]
-}
-
 // PUT
 export const updateUserService = async (id, data) => {
     const updatedData = {

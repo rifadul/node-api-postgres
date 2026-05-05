@@ -40,19 +40,6 @@ export const getUserById = asyncHandler(async (req, res) => {
 })
 
 
-// CREATE
-export const createUser = asyncHandler(async (req, res) => {
-    const { name, email } = req.validated.body
-
-    const user = await UserService.createUserService(name, email)
-
-    return successResponse(res, {
-        status: 201,
-        message: 'User created successfully',
-        data: user,
-    })
-})
-
 
 // UPDATE
 export const updateUser = asyncHandler(async (req, res) => {
@@ -84,6 +71,8 @@ export const patchUser = asyncHandler(async (req, res) => {
 
 // DELETE
 export const deleteUser = asyncHandler(async (req, res) => {
+    console.log('-----------req.validated', req);
+
     const { id } = req.validated.params
 
     const user = await UserService.deleteUserService(Number(id))

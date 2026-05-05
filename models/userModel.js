@@ -24,12 +24,12 @@ export const findUserById = async (id) => {
 }
 
 // CREATE USER
-export const createUser = async (name, email) => {
+export const createUser = async (name, email, password) => {
     return pool.query(
-        `INSERT INTO users (name, email)
-         VALUES ($1, $2)
+        `INSERT INTO users (name, email, password)
+         VALUES ($1, $2, $3)
          RETURNING id, name, email`,
-        [name, email]
+        [name, email, password]
     )
 }
 
@@ -83,5 +83,16 @@ export const restoreUser = async (id) => {
          WHERE id = $1 AND is_deleted = TRUE
          RETURNING id, name, email`,
         [id]
+    )
+}
+
+
+export const findUserByEmail = async (email) => {
+    return pool.query(
+        `SELECT id, name, email, password
+         FROM users
+         WHERE email = $1 AND is_deleted = FALSE
+         LIMIT 1`,
+        [email]
     )
 }

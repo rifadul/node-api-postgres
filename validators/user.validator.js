@@ -10,16 +10,6 @@ const email = z
     .string({ required_error: 'Email is required' })
     .email('Invalid email format')
 
-// CREATE
-export const createUserSchema = z.object({
-    body: z
-        .object({
-            name,
-            email,
-        })
-        .strict(),
-})
-
 // UPDATE (PUT)
 export const updateUserSchema = z.object({
     body: z
