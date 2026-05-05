@@ -32,7 +32,7 @@ export const login = asyncHandler(async (req, res) => {
 })
 
 export const changePassword = asyncHandler(async (req, res) => {
-    const userId = req.user.id
+    const userId = req.params.id
     console.log({ userId });
 
     const { currentPassword, newPassword } = req.validated.body

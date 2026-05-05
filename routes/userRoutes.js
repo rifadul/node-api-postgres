@@ -19,6 +19,7 @@ import {
     paginationSchema
 } from '../validators/user.validator.js'
 import authMiddleware from '../middleware/authMiddleware.js'
+import authorizeSelf from '../middleware/authorizeSelf.js'
 
 // routes
 router.get('/', authMiddleware, validate(paginationSchema), getUsers)
@@ -27,6 +28,7 @@ router.get('/:id', authMiddleware, validate(userIdSchema), getUserById)
 
 router.put('/:id',
     authMiddleware,
+    authorizeSelf,
     validate(userIdSchema),
     validate(updateUserSchema),
     updateUser
@@ -34,14 +36,15 @@ router.put('/:id',
 
 router.patch('/:id',
     authMiddleware,
+    authorizeSelf,
     validate(userIdSchema),
     validate(patchUserSchema),
     patchUser
 )
 
-router.delete('/:id', authMiddleware, validate(userIdSchema), deleteUser)
+router.delete('/:id', authMiddleware, authorizeSelf, validate(userIdSchema), deleteUser)
 
-router.patch('/:id/restore', authMiddleware, validate(userIdSchema), restoreUser)
+router.patch('/:id/restore', authMiddleware, authorizeSelf, validate(userIdSchema), restoreUser)
 
 
 export default router
