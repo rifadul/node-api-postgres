@@ -36,3 +36,25 @@ export const loginService = async (email, password) => {
 
     return { user, token }
 }
+
+export const changePasswordService = async (userId, currentPassword, newPassword) => {
+    const result = await UserModel.findUserByIdWithPassword(userId)
+
+    if (result.rowCount === 0) {
+        throw new AppError('User not found', 404)
+    }
+
+    const user = result.rows[0]
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password)
+
+    if (!isMatch) {
+        throw new AppError('Current password is incorrect', 400)
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10)
+
+    await UserModel.updatePassword(userId, hashedPassword)
+
+    return true
+}

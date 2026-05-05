@@ -14,3 +14,10 @@ export const loginSchema = z.object({
         password: z.string().min(6),
     }),
 })
+
+export const changePasswordSchema = z.object({
+    body: z.object({
+        currentPassword: z.string(),
+        newPassword: z.string().min(6),
+    }),
+})

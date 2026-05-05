@@ -30,3 +30,20 @@ export const login = asyncHandler(async (req, res) => {
         data: { user, token },
     })
 })
+
+export const changePassword = asyncHandler(async (req, res) => {
+    const userId = req.user.id
+    console.log({ userId });
+
+    const { currentPassword, newPassword } = req.validated.body
+
+    await AuthService.changePasswordService(
+        userId,
+        currentPassword,
+        newPassword
+    )
+
+    return successResponse(res, {
+        message: 'Password changed successfully',
+    })
+})

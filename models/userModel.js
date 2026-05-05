@@ -96,3 +96,17 @@ export const findUserByEmail = async (email) => {
         [email]
     )
 }
+
+export const findUserByIdWithPassword = async (id) => {
+    return pool.query(
+        `SELECT id, password FROM users WHERE id = $1`,
+        [id]
+    )
+}
+
+export const updatePassword = async (id, password) => {
+    return pool.query(
+        `UPDATE users SET password = $1 WHERE id = $2`,
+        [password, id]
+    )
+}
