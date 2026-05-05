@@ -110,3 +110,39 @@ export const updatePassword = async (id, password) => {
         [password, id]
     )
 }
+
+// find by email (already exists)
+
+// save reset token
+export const saveResetToken = async (email, token, expires) => {
+    return pool.query(
+        `UPDATE users
+         SET reset_token = $1,
+             reset_token_expires = $2
+         WHERE email = $3 AND is_deleted = FALSE`,
+        [token, expires, email]
+    )
+}
+
+// find user by reset token
+export const findByResetToken = async (hashedToken) => {
+    return pool.query(
+        `SELECT id, reset_token_expires
+         FROM users
+         WHERE reset_token = $1
+           AND is_deleted = FALSE`,
+        [hashedToken]
+    )
+}
+
+// update password + clear token
+export const updatePasswordAndClearToken = async (id, password) => {
+    return pool.query(
+        `UPDATE users
+         SET password = $1,
+             reset_token = NULL,
+             reset_token_expires = NULL
+         WHERE id = $2`,
+        [password, id]
+    )
+}

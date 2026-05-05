@@ -3,6 +3,8 @@ import * as UserModel from '../../models/userModel.js'
 import { generateToken } from '../../utils/jwt.js'
 import AppError from '../../utils/AppError.js'
 import { ERROR_CODES } from '../../constants/errorCodes.js'
+import { generateResetToken } from '../../utils/resetToken.js'
+import { createHash, randomBytes } from 'crypto'
 
 // REGISTER
 export const registerService = async (name, email, password) => {
@@ -55,6 +57,58 @@ export const changePasswordService = async (userId, currentPassword, newPassword
     const hashedPassword = await bcrypt.hash(newPassword, 10)
 
     await UserModel.updatePassword(userId, hashedPassword)
+
+    return true
+}
+
+
+export const forgotPasswordService = async (email) => {
+    const result = await UserModel.findUserByEmail(email)
+
+    // ❗ don't reveal if email exists
+    if (result.rowCount === 0) {
+        return true
+    }
+
+    const { rawToken, hashedToken } = generateResetToken()
+
+    const expires = new Date(Date.now() + 15 * 60 * 1000) // 15 min
+
+    await UserModel.saveResetToken(email, hashedToken, expires)
+
+    // 🔥 simulate email
+    console.log(`Reset link: http://localhost:3000/reset-password?token=${rawToken}`)
+
+    return true
+}
+
+
+export const resetPasswordService = async (token, newPassword) => {
+    const hashedToken = createHash('sha256')
+        .update(token)
+        .digest('hex')
+
+
+
+
+    const result = await UserModel.findByResetToken(hashedToken)
+
+    if (result.rowCount === 0) {
+        throw new AppError('Invalid or expired token', 400)
+    }
+
+    const user = result.rows[0]
+
+    if (new Date(user.reset_token_expires) < new Date()) {
+        throw new AppError('Token expired', 400)
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10)
+
+    await UserModel.updatePasswordAndClearToken(
+        user.id,
+        hashedPassword
+    )
 
     return true
 }

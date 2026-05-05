@@ -47,3 +47,24 @@ export const changePassword = asyncHandler(async (req, res) => {
         message: 'Password changed successfully',
     })
 })
+
+
+export const forgotPassword = asyncHandler(async (req, res) => {
+    const { email } = req.validated.body
+
+    await AuthService.forgotPasswordService(email)
+
+    return successResponse(res, {
+        message: 'If email exists, reset link sent',
+    })
+})
+
+export const resetPassword = asyncHandler(async (req, res) => {
+    const { token, newPassword } = req.validated.body
+
+    await AuthService.resetPasswordService(token, newPassword)
+
+    return successResponse(res, {
+        message: 'Password reset successful',
+    })
+})
