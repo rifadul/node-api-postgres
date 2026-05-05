@@ -9,6 +9,7 @@ import {
     updateUser,
     patchUser,
     deleteUser,
+    restoreUser
 } from '../controllers/userController.js'
 
 import validate from '../middleware/validate.js'
@@ -41,6 +42,8 @@ router.patch('/:id',
 )
 
 router.delete('/:id', validate(userIdSchema), deleteUser)
+
+router.patch('/:id/restore', validate(userIdSchema), restoreUser)
 
 
 export default router

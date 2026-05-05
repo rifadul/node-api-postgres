@@ -88,3 +88,28 @@ export const deleteUserService = async (id) => {
 
     return result.rows[0]
 }
+
+export const restoreUserService = async (id) => {
+    try {
+        const result = await UserModel.restoreUser(id)
+
+        if (result.rowCount === 0) {
+            throw new AppError(
+                'User not found or already active',
+                404
+            )
+        }
+
+        return result.rows[0]
+    } catch (err) {
+        if (err.code === '23505') {
+            throw new AppError(
+                'Cannot restore user: email already in use',
+                400,
+                ERROR_CODES.EMAIL_ALREADY_EXISTS
+            )
+        }
+
+        throw err
+    }
+}

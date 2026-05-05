@@ -6,7 +6,7 @@ const errorHandler = (err, req, res, next) => {
 
     // PostgreSQL unique violation
     if (err.code === '23505') {
-        if (err.constraint === 'users_email_key') {
+        if (err.constraint === 'users_email_unique_active') {
             return errorResponse(res, {
                 status: 400,
                 message: 'Email already exists',

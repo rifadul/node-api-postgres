@@ -93,3 +93,14 @@ export const deleteUser = asyncHandler(async (req, res) => {
         data: user,
     })
 })
+
+export const restoreUser = asyncHandler(async (req, res) => {
+    const { id } = req.validated.params
+
+    const user = await UserService.restoreUserService(Number(id))
+
+    return successResponse(res, {
+        message: 'User restored successfully',
+        data: user,
+    })
+})

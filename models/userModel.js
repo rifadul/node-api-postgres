@@ -2,33 +2,38 @@ import pool from '../db/index.js'
 
 // GET USERS
 export const findAllUsers = async (limit, offset) => {
-    const query = `
-        SELECT id, name, email
-        FROM users
-        WHERE is_deleted = FALSE
-        ORDER BY id DESC
-        LIMIT $1 OFFSET $2
-    `
-    return pool.query(query, [limit, offset])
+    return pool.query(
+        `SELECT id, name, email
+         FROM users
+         WHERE is_deleted = FALSE
+         ORDER BY id DESC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset]
+    )
 }
 
 // GET USER
 export const findUserById = async (id) => {
     return pool.query(
-        `SELECT id, name, email FROM users WHERE id = $1 AND is_deleted = FALSE LIMIT 1`,
+        `SELECT id, name, email
+         FROM users
+         WHERE id = $1 AND is_deleted = FALSE
+         LIMIT 1`,
         [id]
     )
 }
 
-// CREATE
+// CREATE USER
 export const createUser = async (name, email) => {
     return pool.query(
-        `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING id, name, email`,
+        `INSERT INTO users (name, email)
+         VALUES ($1, $2)
+         RETURNING id, name, email`,
         [name, email]
     )
 }
 
-// UPDATE
+// UPDATE USER
 export const updateUser = async (id, data) => {
     const fields = []
     const values = []
@@ -42,20 +47,22 @@ export const updateUser = async (id, data) => {
 
     values.push(id)
 
-    const query = `
-        UPDATE users
-        SET ${fields.join(', ')}
-        WHERE id = $${i} AND is_deleted = FALSE
-        RETURNING id, name, email
-    `
-
-    return pool.query(query, values)
+    return pool.query(
+        `UPDATE users
+         SET ${fields.join(', ')}
+         WHERE id = $${i} AND is_deleted = FALSE
+         RETURNING id, name, email`,
+        values
+    )
 }
 
-// DELETE (soft)
+// SOFT DELETE
 export const deleteUser = async (id) => {
     return pool.query(
-        `UPDATE users SET is_deleted = TRUE WHERE id = $1 AND is_deleted = FALSE RETURNING id, name, email`,
+        `UPDATE users
+         SET is_deleted = TRUE
+         WHERE id = $1 AND is_deleted = FALSE
+         RETURNING id, name, email`,
         [id]
     )
 }
@@ -66,4 +73,15 @@ export const countUsers = async () => {
         `SELECT COUNT(*) FROM users WHERE is_deleted = FALSE`
     )
     return Number(result.rows[0].count)
+}
+
+
+export const restoreUser = async (id) => {
+    return pool.query(
+        `UPDATE users
+         SET is_deleted = FALSE
+         WHERE id = $1 AND is_deleted = TRUE
+         RETURNING id, name, email`,
+        [id]
+    )
 }
