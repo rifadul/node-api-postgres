@@ -137,51 +137,6 @@ export const resetPasswordService = async (token, newPassword) => {
     return true
 }
 
-export const refreshTokenService1 = async (oldRefreshToken) => {
-    if (!oldRefreshToken) {
-        throw new AppError('Refresh token required', 401, ERROR_CODES.INVALID_REQUEST)
-    }
-
-    // 🔹 Step 1: verify JWT signature
-    let decoded
-    try {
-        decoded = verifyRefreshToken(oldRefreshToken)
-    } catch (err) {
-        throw new AppError('Invalid refresh token', 401, ERROR_CODES.INVALID_TOKEN)
-    }
-
-    // 🔹 Step 2: check if token exists in DB
-    const result = await UserModel.findUserByRefreshToken(
-        oldRefreshToken
-    )
-
-    if (result.rowCount === 0) {
-        throw new AppError('Refresh token reused or invalid', 401, ERROR_CODES.INVALID_TOKEN)
-    }
-
-    const user = result.rows[0]
-
-    // 🔥 Step 3: generate NEW tokens
-    const newAccessToken = generateAccessToken({
-        id: user.id,
-    })
-
-    const newRefreshToken = generateRefreshToken({
-        id: user.id,
-    })
-
-    // 🔥 Step 4: replace old refresh token in DB
-    await UserModel.saveRefreshToken(
-        user.id,
-        newRefreshToken
-    )
-
-    return {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-    }
-}
-
 
 export const refreshTokenService = async (oldRefreshToken) => {
     if (!oldRefreshToken) {
@@ -203,6 +158,17 @@ export const refreshTokenService = async (oldRefreshToken) => {
     )
 
     if (result.rowCount === 0) {
+        // 🔥 optional: kill all sessions (simple version = clear current user by decoded.id)
+        await UserModel.clearRefreshToken(decoded.id)
+
+        await logAction({
+            actorId: decoded.id,
+            action: AUDIT_ACTIONS.TOKEN_REUSE_DETECTED,
+            entityType: 'users',
+            entityId: decoded.id,
+            metadata: {},
+        })
+
         throw new AppError('Refresh token reused or invalid', 401, ERROR_CODES.TOKEN_EXPIRED)
     }
 

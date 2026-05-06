@@ -19,11 +19,7 @@ router.post(
 router.post('/forgot-password', validate(forgotPasswordSchema), forgotPassword)
 
 router.post('/reset-password', validate(resetPasswordSchema), resetPassword)
-router.post(
-    '/refresh-token',
-    validate(refreshTokenSchema),
-    refreshToken
-)
+router.post('/refresh-token', refreshToken)
 router.post(
     '/logout',
     authMiddleware,

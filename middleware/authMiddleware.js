@@ -3,13 +3,11 @@ import AppError from '../utils/AppError.js'
 import { ERROR_CODES } from '../constants/errorCodes.js'
 
 const authMiddleware = (req, res, next) => {
-    const authHeader = req.headers.authorization
+    const token = req.cookies.accessToken
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
         throw new AppError('Unauthorized', 401, ERROR_CODES.UNAUTHORIZED)
     }
-
-    const token = authHeader.split(' ')[1]
 
     try {
         const decoded = verifyAccessToken(token)

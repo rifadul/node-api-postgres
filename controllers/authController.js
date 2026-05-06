@@ -1,5 +1,7 @@
+import { ERROR_CODES } from '../constants/errorCodes.js'
 import asyncHandler from '../middleware/asyncHandler.js'
 import * as AuthService from '../services/auth/authService.js'
+import { accessCookieOptions, refreshCookieOptions } from '../utils/cookies.js'
 import { successResponse } from '../utils/response.js'
 
 // REGISTER
@@ -23,17 +25,25 @@ export const register = asyncHandler(async (req, res) => {
 export const login = asyncHandler(async (req, res) => {
     const { email, password } = req.validated.body
 
-    const { user, accessToken, refreshToken } = await AuthService.loginService(email, password)
+    const { user, accessToken, refreshToken } =
+        await AuthService.loginService(email, password)
+
+    // 🔒 set cookies
+    res.cookie('accessToken', accessToken, accessCookieOptions)
+    res.cookie('refreshToken', refreshToken, refreshCookieOptions)
 
     return successResponse(res, {
         message: 'Login successful',
-        data: { user, accessToken, refreshToken },
+        data: { user },
     })
 })
 
 export const changePassword = asyncHandler(async (req, res) => {
-    const userId = req.params.id
-    console.log({ userId });
+
+    if (!req.user || !req.user.id) {
+        throw new AppError('Unauthorized', 401, ERROR_CODES.UNAUTHORIZED)
+    }
+    const userId = req.user.id
 
     const { currentPassword, newPassword } = req.validated.body
 
@@ -70,20 +80,25 @@ export const resetPassword = asyncHandler(async (req, res) => {
 })
 
 export const refreshToken = asyncHandler(async (req, res) => {
-    const { refreshToken } = req.validated.body
+    const oldRefreshToken = req.cookies.refreshToken
 
-    const data = await AuthService.refreshTokenService(
-        refreshToken
-    )
+    const { accessToken, refreshToken } =
+        await AuthService.refreshTokenService(oldRefreshToken)
+
+    // 🔁 rotate cookies
+    res.cookie('accessToken', accessToken, accessCookieOptions)
+    res.cookie('refreshToken', refreshToken, refreshCookieOptions)
 
     return successResponse(res, {
         message: 'Token refreshed',
-        data,
     })
 })
 
 export const logout = asyncHandler(async (req, res) => {
     await AuthService.logoutService(req.user.id)
+
+    res.clearCookie('accessToken')
+    res.clearCookie('refreshToken')
 
     return successResponse(res, {
         message: 'Logged out successfully',
