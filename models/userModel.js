@@ -147,23 +147,23 @@ export const updatePasswordAndClearToken = async (id, password) => {
     )
 }
 
-export const saveRefreshToken = async (userId, refreshToken) => {
+export const saveRefreshToken = async (userId, hashedToken) => {
     return pool.query(
         `UPDATE users
          SET refresh_token = $1
          WHERE id = $2`,
-        [refreshToken, userId]
+        [hashedToken, userId]
     )
 }
 
-export const findUserByRefreshToken = async (refreshToken) => {
+export const findUserByRefreshToken = async (hashedToken) => {
     return pool.query(
         `SELECT id, refresh_token
          FROM users
          WHERE refresh_token = $1
            AND is_deleted = FALSE
          LIMIT 1`,
-        [refreshToken]
+        [hashedToken]
     )
 }
 

@@ -7,6 +7,7 @@ import { generateResetToken } from '../../utils/resetToken.js'
 import { createHash, randomBytes } from 'crypto'
 import { AUDIT_ACTIONS } from '../../constants/auditActions.js'
 import { logAction } from '../auditLogService.js'
+import { hashToken } from '../../utils/hash.js'
 
 // REGISTER
 export const registerService = async (name, email, password) => {
@@ -44,20 +45,13 @@ export const loginService = async (email, password) => {
         },
     })
 
-    // 🔥 generate tokens
-    const accessToken = generateAccessToken({
-        id: user.id,
-    })
+    const accessToken = generateAccessToken({ id: user.id })
+    const refreshToken = generateRefreshToken({ id: user.id })
 
-    const refreshToken = generateRefreshToken({
-        id: user.id,
-    })
+    // 🔥 HASH before saving
+    const hashedToken = hashToken(refreshToken)
 
-    // save refresh token
-    await UserModel.saveRefreshToken(
-        user.id,
-        refreshToken
-    )
+    await UserModel.saveRefreshToken(user.id, hashedToken)
 
     // ✅ remove password
     delete user.password
@@ -81,7 +75,7 @@ export const changePasswordService = async (userId, currentPassword, newPassword
     const isMatch = await bcrypt.compare(currentPassword, user.password)
 
     if (!isMatch) {
-        throw new AppError('Current password is incorrect', 400)
+        throw new AppError('Current password is incorrect', 400, ERROR_CODES.VALIDATION_ERROR)
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10)
@@ -124,7 +118,7 @@ export const resetPasswordService = async (token, newPassword) => {
     const result = await UserModel.findByResetToken(hashedToken)
 
     if (result.rowCount === 0) {
-        throw new AppError('Invalid or expired token', 400)
+        throw new AppError('Invalid or expired token', 400, ERROR_CODES.TOKEN_EXPIRED)
     }
 
     const user = result.rows[0]
@@ -143,33 +137,95 @@ export const resetPasswordService = async (token, newPassword) => {
     return true
 }
 
-export const refreshTokenService = async (refreshToken) => {
-    if (!refreshToken) {
-        throw new AppError('Refresh token required', 401)
+export const refreshTokenService1 = async (oldRefreshToken) => {
+    if (!oldRefreshToken) {
+        throw new AppError('Refresh token required', 401, ERROR_CODES.INVALID_REQUEST)
     }
 
-    // verify JWT
-    const decoded = verifyRefreshToken(refreshToken)
+    // 🔹 Step 1: verify JWT signature
+    let decoded
+    try {
+        decoded = verifyRefreshToken(oldRefreshToken)
+    } catch (err) {
+        throw new AppError('Invalid refresh token', 401, ERROR_CODES.INVALID_TOKEN)
+    }
 
-    // verify token exists in DB
+    // 🔹 Step 2: check if token exists in DB
     const result = await UserModel.findUserByRefreshToken(
-        refreshToken
+        oldRefreshToken
     )
 
     if (result.rowCount === 0) {
-        throw new AppError('Invalid refresh token', 401)
+        throw new AppError('Refresh token reused or invalid', 401, ERROR_CODES.INVALID_TOKEN)
     }
 
-    // issue new access token
-    const accessToken = generateAccessToken({
-        id: decoded.id,
+    const user = result.rows[0]
+
+    // 🔥 Step 3: generate NEW tokens
+    const newAccessToken = generateAccessToken({
+        id: user.id,
     })
 
-    return { accessToken }
+    const newRefreshToken = generateRefreshToken({
+        id: user.id,
+    })
+
+    // 🔥 Step 4: replace old refresh token in DB
+    await UserModel.saveRefreshToken(
+        user.id,
+        newRefreshToken
+    )
+
+    return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+    }
+}
+
+
+export const refreshTokenService = async (oldRefreshToken) => {
+    if (!oldRefreshToken) {
+        throw new AppError('Refresh token required', 401, ERROR_CODES.INVALID_REQUEST)
+    }
+
+    let decoded
+    try {
+        decoded = verifyRefreshToken(oldRefreshToken)
+    } catch {
+        throw new AppError('Invalid refresh token', 401, ERROR_CODES.INVALID_TOKEN)
+    }
+
+    // 🔥 HASH incoming token before DB lookup
+    const hashedOldToken = hashToken(oldRefreshToken)
+
+    const result = await UserModel.findUserByRefreshToken(
+        hashedOldToken
+    )
+
+    if (result.rowCount === 0) {
+        throw new AppError('Refresh token reused or invalid', 401, ERROR_CODES.TOKEN_EXPIRED)
+    }
+
+    const user = result.rows[0]
+
+    // 🔥 generate new tokens
+    const newAccessToken = generateAccessToken({ id: user.id })
+    const newRefreshToken = generateRefreshToken({ id: user.id })
+
+    // 🔥 hash NEW refresh token before saving
+    const hashedNewToken = hashToken(newRefreshToken)
+
+    await UserModel.saveRefreshToken(
+        user.id,
+        hashedNewToken
+    )
+
+    return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+    }
 }
 
 export const logoutService = async (userId) => {
     await UserModel.clearRefreshToken(userId)
-
-    return true
 }
