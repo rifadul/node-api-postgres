@@ -1,13 +1,13 @@
 # node-api-postgres
 
-A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It provides user management with authentication, JWT-based authorization, password recovery, soft-delete + restore, request validation, rate limiting, and a global error handler.
+A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It provides user management with JWT-based authentication (access + refresh tokens), password recovery, soft-delete + restore, request validation, audit logging, rate limiting, and a global error handler.
 
 ## Tech Stack
 
 - **Runtime:** Node.js (ESM — `"type": "module"`)
 - **Framework:** Express 5
 - **Database:** PostgreSQL via `pg`
-- **Auth:** `jsonwebtoken` (JWT) + `bcrypt`
+- **Auth:** `jsonwebtoken` (access + refresh JWTs) + `bcrypt`
 - **Validation:** `joi` & `zod`
 - **Security/Infra:** `cors`, `express-rate-limit`, API-key middleware
 - **Dev:** `nodemon`
@@ -16,37 +16,40 @@ A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It prov
 
 ```
 .
-├── app.js                  # Express app entry point
+├── app.js                      # Express app entry point
 ├── constants/
-│   └── errorCodes.js       # Centralized error codes
+│   ├── auditActions.js         # Audit-log action enum
+│   └── errorCodes.js           # Centralized error codes
 ├── controllers/
-│   ├── authController.js   # Register, login, password flows
-│   └── userController.js   # User CRUD + restore
+│   ├── authController.js       # Register, login, logout, password & token flows
+│   └── userController.js       # User CRUD + restore
 ├── db/
-│   └── index.js            # PostgreSQL pool
+│   └── index.js                # PostgreSQL pool
 ├── middleware/
-│   ├── apiKey.js           # x-api-key gate
-│   ├── asyncHandler.js     # Async wrapper
-│   ├── authMiddleware.js   # JWT Bearer auth
-│   ├── authorizeSelf.js    # Owner-only guard
-│   ├── errorHandler.js     # Global error handler
-│   ├── validate.js         # Schema validator
+│   ├── apiKey.js               # x-api-key gate
+│   ├── asyncHandler.js         # Async wrapper
+│   ├── authMiddleware.js       # JWT Bearer auth
+│   ├── authorizeSelf.js        # Owner-only guard
+│   ├── errorHandler.js         # Global error handler
+│   ├── validate.js             # Schema validator
 │   └── validateId.js
 ├── models/
-│   └── userModel.js        # SQL queries
+│   ├── auditLogModel.js        # Audit-log SQL queries
+│   └── userModel.js            # User SQL queries (incl. refresh token)
 ├── routes/
 │   ├── authRoutes.js
 │   └── userRoutes.js
 ├── services/
 │   ├── auth/
-│   │   └── authService.js  # Auth business logic
+│   │   └── authService.js      # Auth business logic
+│   ├── auditLogService.js      # Fire-and-forget audit logger
 │   └── userService.js
 ├── utils/
-│   ├── AppError.js         # Custom error class
+│   ├── AppError.js             # Custom error class
 │   ├── formatZodError.js
-│   ├── jwt.js              # Token sign/verify
-│   ├── resetToken.js       # Reset-token generation
-│   └── response.js         # Unified success response
+│   ├── jwt.js                  # Access/refresh token sign & verify
+│   ├── resetToken.js           # Reset-token generation
+│   └── response.js             # Unified success response
 ├── validators/
 │   ├── auth.validator.js
 │   └── user.validator.js
@@ -83,12 +86,17 @@ DB_PORT=5432
 
 PORT=3000
 API_KEY=your_api_key
-JWT_SECRET=your_long_random_secret
+
+# Separate secrets for access and refresh tokens
+JWT_ACCESS_SECRET=your_long_random_access_secret
+JWT_REFRESH_SECRET=your_long_random_refresh_secret
 ```
+
+Access tokens expire in **5 minutes**; refresh tokens expire in **1 day**.
 
 ### 3. Database Schema
 
-Create the database and `users` table:
+Create the database and tables:
 
 ```sql
 CREATE DATABASE crud_api;
@@ -101,6 +109,17 @@ CREATE TABLE users (
     is_deleted BOOLEAN DEFAULT FALSE,
     reset_token VARCHAR(255),
     reset_token_expires TIMESTAMP,
+    refresh_token TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE audit_logs (
+    id SERIAL PRIMARY KEY,
+    actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(64) NOT NULL,
+    entity_type VARCHAR(64) NOT NULL,
+    entity_id INTEGER,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP DEFAULT NOW()
 );
 ```
@@ -123,19 +142,21 @@ Every request must pass through:
 3. **JSON body parser** — limited to 10kb.
 4. **CORS** — enabled for all origins.
 
-Protected routes additionally require an `Authorization: Bearer <jwt>` header.
+Protected routes additionally require an `Authorization: Bearer <accessToken>` header.
 
 ## API Endpoints
 
 ### Auth — `/auth`
 
-| Method | Path                | Auth | Description                                   |
-| ------ | ------------------- | ---- | --------------------------------------------- |
-| POST   | `/register`         | —    | Register a new user                           |
-| POST   | `/login`            | —    | Log in, returns JWT                           |
-| POST   | `/change-password`  | JWT  | Change password (requires current password)   |
+| Method | Path                | Auth | Description                                       |
+| ------ | ------------------- | ---- | ------------------------------------------------- |
+| POST   | `/register`         | —    | Register a new user                               |
+| POST   | `/login`            | —    | Log in, returns access + refresh tokens           |
+| POST   | `/refresh-token`    | —    | Exchange a refresh token for a new access token   |
+| POST   | `/logout`           | JWT  | Invalidate the current refresh token              |
+| POST   | `/change-password`  | JWT  | Change password (requires current password)       |
 | POST   | `/forgot-password`  | —    | Generate password reset token (logged to console) |
-| POST   | `/reset-password`   | —    | Reset password using token                    |
+| POST   | `/reset-password`   | —    | Reset password using token                        |
 
 ### Users — `/users`
 
@@ -161,7 +182,7 @@ curl -X POST http://localhost:3000/auth/register \
   -d '{"name":"Siam","email":"siam@example.com","password":"Secret123!"}'
 ```
 
-**Login**
+**Login** (returns `accessToken` + `refreshToken`)
 
 ```bash
 curl -X POST http://localhost:3000/auth/login \
@@ -170,12 +191,29 @@ curl -X POST http://localhost:3000/auth/login \
   -d '{"email":"siam@example.com","password":"Secret123!"}'
 ```
 
+**Refresh access token**
+
+```bash
+curl -X POST http://localhost:3000/auth/refresh-token \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your_api_key" \
+  -d '{"refreshToken":"<refreshToken>"}'
+```
+
+**Logout**
+
+```bash
+curl -X POST http://localhost:3000/auth/logout \
+  -H "x-api-key: your_api_key" \
+  -H "Authorization: Bearer <accessToken>"
+```
+
 **List users**
 
 ```bash
 curl http://localhost:3000/users?page=1&limit=10 \
   -H "x-api-key: your_api_key" \
-  -H "Authorization: Bearer <jwt>"
+  -H "Authorization: Bearer <accessToken>"
 ```
 
 ## Response Format
@@ -201,9 +239,28 @@ Errors are normalized through the global handler with `AppError`:
 }
 ```
 
+## Authentication Flow
+
+1. **Login** returns a short-lived `accessToken` (5 min) and a longer-lived `refreshToken` (1 day). The refresh token is also persisted on the user row.
+2. Send `Authorization: Bearer <accessToken>` on protected routes.
+3. When the access token expires, call `POST /auth/refresh-token` with the stored refresh token to receive a new access token.
+4. **Logout** clears the refresh token in the database, invalidating future refreshes.
+
+## Audit Logging
+
+Sensitive actions are recorded in the `audit_logs` table via a fire-and-forget service (`services/auditLogService.js`). Failures are logged but never break the request. Tracked actions are defined in `constants/auditActions.js`:
+
+- `LOGIN`
+- `CREATE_USER`, `UPDATE_USER`, `DELETE_USER`, `RESTORE_USER`
+- `CHANGE_PASSWORD`, `RESET_PASSWORD`
+
+Each entry stores the actor, action, entity type/id, and a JSON `metadata` blob.
+
 ## Security Notes
 
 - Passwords are hashed with **bcrypt** (cost 10).
+- Access and refresh tokens use **separate secrets** (`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`).
+- Refresh tokens are persisted server-side and cleared on logout, allowing revocation.
 - Reset tokens are stored as a **SHA-256 hash**; only the raw token leaves the server.
 - Reset tokens expire after **15 minutes**.
 - `forgot-password` does **not** reveal whether an email exists.
