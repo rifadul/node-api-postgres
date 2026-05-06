@@ -6,7 +6,7 @@ import { successResponse } from '../utils/response.js'
 export const register = asyncHandler(async (req, res) => {
     const { name, email, password } = req.validated.body
 
-    const { user, token } = await AuthService.registerService(
+    const { user } = await AuthService.registerService(
         name,
         email,
         password
@@ -15,7 +15,7 @@ export const register = asyncHandler(async (req, res) => {
     return successResponse(res, {
         status: 201,
         message: 'User registered',
-        data: { user, token },
+        data: { user },
     })
 })
 
@@ -23,11 +23,11 @@ export const register = asyncHandler(async (req, res) => {
 export const login = asyncHandler(async (req, res) => {
     const { email, password } = req.validated.body
 
-    const { user, token } = await AuthService.loginService(email, password)
+    const { user, accessToken, refreshToken } = await AuthService.loginService(email, password)
 
     return successResponse(res, {
         message: 'Login successful',
-        data: { user, token },
+        data: { user, accessToken, refreshToken },
     })
 })
 
@@ -66,5 +66,26 @@ export const resetPassword = asyncHandler(async (req, res) => {
 
     return successResponse(res, {
         message: 'Password reset successful',
+    })
+})
+
+export const refreshToken = asyncHandler(async (req, res) => {
+    const { refreshToken } = req.validated.body
+
+    const data = await AuthService.refreshTokenService(
+        refreshToken
+    )
+
+    return successResponse(res, {
+        message: 'Token refreshed',
+        data,
+    })
+})
+
+export const logout = asyncHandler(async (req, res) => {
+    await AuthService.logoutService(req.user.id)
+
+    return successResponse(res, {
+        message: 'Logged out successfully',
     })
 })

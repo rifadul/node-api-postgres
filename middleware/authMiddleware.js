@@ -1,4 +1,4 @@
-import { verifyToken } from '../utils/jwt.js'
+import { verifyAccessToken } from '../utils/jwt.js'
 import AppError from '../utils/AppError.js'
 import { ERROR_CODES } from '../constants/errorCodes.js'
 
@@ -12,7 +12,7 @@ const authMiddleware = (req, res, next) => {
     const token = authHeader.split(' ')[1]
 
     try {
-        const decoded = verifyToken(token)
+        const decoded = verifyAccessToken(token)
         req.user = decoded
         next()
     } catch (err) {

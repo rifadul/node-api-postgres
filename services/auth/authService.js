@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt'
 import * as UserModel from '../../models/userModel.js'
-import { generateToken } from '../../utils/jwt.js'
+import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../../utils/jwt.js'
 import AppError from '../../utils/AppError.js'
 import { ERROR_CODES } from '../../constants/errorCodes.js'
 import { generateResetToken } from '../../utils/resetToken.js'
@@ -44,12 +44,29 @@ export const loginService = async (email, password) => {
         },
     })
 
-    const token = generateToken({ id: user.id })
+    // 🔥 generate tokens
+    const accessToken = generateAccessToken({
+        id: user.id,
+    })
+
+    const refreshToken = generateRefreshToken({
+        id: user.id,
+    })
+
+    // save refresh token
+    await UserModel.saveRefreshToken(
+        user.id,
+        refreshToken
+    )
 
     // ✅ remove password
     delete user.password
 
-    return { user, token }
+    return {
+        user,
+        accessToken,
+        refreshToken,
+    }
 }
 
 export const changePasswordService = async (userId, currentPassword, newPassword) => {
@@ -122,6 +139,37 @@ export const resetPasswordService = async (token, newPassword) => {
         user.id,
         hashedPassword
     )
+
+    return true
+}
+
+export const refreshTokenService = async (refreshToken) => {
+    if (!refreshToken) {
+        throw new AppError('Refresh token required', 401)
+    }
+
+    // verify JWT
+    const decoded = verifyRefreshToken(refreshToken)
+
+    // verify token exists in DB
+    const result = await UserModel.findUserByRefreshToken(
+        refreshToken
+    )
+
+    if (result.rowCount === 0) {
+        throw new AppError('Invalid refresh token', 401)
+    }
+
+    // issue new access token
+    const accessToken = generateAccessToken({
+        id: decoded.id,
+    })
+
+    return { accessToken }
+}
+
+export const logoutService = async (userId) => {
+    await UserModel.clearRefreshToken(userId)
 
     return true
 }
