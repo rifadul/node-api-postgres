@@ -42,7 +42,7 @@ router.patch('/:id',
     patchUser
 )
 
-router.delete('/:id', authMiddleware, authorizeSelf, validate(userIdSchema), deleteUser)
+router.delete('/:id', authMiddleware, validate(userIdSchema), deleteUser)
 
 router.patch('/:id/restore', authMiddleware, authorizeSelf, validate(userIdSchema), restoreUser)
 

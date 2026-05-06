@@ -5,6 +5,8 @@ import AppError from '../../utils/AppError.js'
 import { ERROR_CODES } from '../../constants/errorCodes.js'
 import { generateResetToken } from '../../utils/resetToken.js'
 import { createHash, randomBytes } from 'crypto'
+import { AUDIT_ACTIONS } from '../../constants/auditActions.js'
+import { logAction } from '../auditLogService.js'
 
 // REGISTER
 export const registerService = async (name, email, password) => {
@@ -30,6 +32,17 @@ export const loginService = async (email, password) => {
     if (!isMatch) {
         throw new AppError('Invalid credentials', 401, ERROR_CODES.UNAUTHORIZED)
     }
+
+    await logAction({
+        actorId: user.id,
+        action: AUDIT_ACTIONS.LOGIN,
+        entityType: 'users',
+        entityId: user.id,
+        metadata: {
+            name: user.name,
+            email: user.email,
+        },
+    })
 
     const token = generateToken({ id: user.id })
 

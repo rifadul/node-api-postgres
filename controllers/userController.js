@@ -71,11 +71,13 @@ export const patchUser = asyncHandler(async (req, res) => {
 
 // DELETE
 export const deleteUser = asyncHandler(async (req, res) => {
-    console.log('-----------req.validated', req);
-
+    const actorId = req.user.id
     const { id } = req.validated.params
-
-    const user = await UserService.deleteUserService(Number(id))
+    
+    const user = await UserService.deleteUserService(
+        Number(id),
+        actorId
+    )
 
     return successResponse(res, {
         message: 'User deleted successfully',

@@ -1,6 +1,8 @@
 import * as UserModel from '../models/userModel.js'
 import AppError from '../utils/AppError.js'
 import { ERROR_CODES } from '../constants/errorCodes.js'
+import { logAction } from './auditLogService.js'
+import { AUDIT_ACTIONS } from '../constants/auditActions.js'
 
 // GET USERS
 export const getUsersService = async (page, limit) => {
@@ -71,14 +73,28 @@ export const patchUserService = async (id, data) => {
 }
 
 // DELETE
-export const deleteUserService = async (id) => {
+export const deleteUserService = async (id, actorId) => {
     const result = await UserModel.deleteUser(id)
 
     if (result.rowCount === 0) {
         throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND)
     }
 
-    return result.rows[0]
+    const user = result.rows[0]
+
+    // ✅ audit log
+    await logAction({
+        actorId,
+        action: AUDIT_ACTIONS.DELETE_USER,
+        entityType: 'users',
+        entityId: user.id,
+        metadata: {
+            name: user.name,
+            email: user.email,
+        },
+    })
+
+    return user
 }
 
 export const restoreUserService = async (id) => {
