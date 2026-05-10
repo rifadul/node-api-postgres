@@ -28,6 +28,12 @@ const options = {
                     in: 'header',
                     name: 'x-api-key',
                 },
+
+                csrfToken: {
+                    type: 'apiKey',
+                    in: 'header',
+                    name: 'x-csrf-token',
+                },
             },
 
             schemas: {
@@ -45,6 +51,47 @@ const options = {
                         email: {
                             type: 'string',
                             example: 'john@test.com',
+                        },
+                    },
+                },
+
+                SuccessResponse: {
+                    type: 'object',
+                    properties: {
+                        success: {
+                            type: 'boolean',
+                            example: true,
+                        },
+                        message: {
+                            type: 'string',
+                            example: 'Operation successful',
+                        },
+                        data: {
+                            type: 'object',
+                            nullable: true,
+                        },
+                    },
+                },
+
+                PaginatedUsersResponse: {
+                    type: 'object',
+                    properties: {
+                        success: {
+                            type: 'boolean',
+                            example: true,
+                        },
+                        data: {
+                            type: 'array',
+                            items: { $ref: '#/components/schemas/User' },
+                        },
+                        meta: {
+                            type: 'object',
+                            properties: {
+                                page: { type: 'integer', example: 1 },
+                                limit: { type: 'integer', example: 10 },
+                                total: { type: 'integer', example: 42 },
+                                totalPages: { type: 'integer', example: 5 },
+                            },
                         },
                     },
                 },
