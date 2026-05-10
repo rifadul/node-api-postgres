@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
+import csrf from 'csurf';
 
 import userRoutes from './routes/userRoutes.js';
 import authRoutes from './routes/authRoutes.js';
@@ -12,17 +13,19 @@ import { allowedOrigins } from './constants/allowedOrigins.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable this ONLY when you deploy to a platform like Heroku or use Nginx
-// app.set('trust proxy', 1);
-
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
+    standardHeaders: true,
+    legacyHeaders: false,
     message: 'Too many requests, please try again later.'
 });
 
+const csrfProtection = csrf({
+    cookie: true,
+});
+
+// ✅ CORS
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) {
@@ -34,9 +37,20 @@ app.use(cors({
     credentials: true
 }));
 
-app.use(limiter);
+// ✅ Correct order
+app.use(cookieParser());      // 🔥 FIRST
 app.use(express.json({ limit: '10kb' }));
-app.use(cookieParser());
+app.use(express.urlencoded({ extended: true }));
+
+// ✅ CSRF (conditional)
+app.use((req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+        return next()
+    }
+    return csrfProtection(req, res, next)
+})
+
+app.use(limiter);
 app.use(apiKeyMiddleware);
 
 app.use('/users', userRoutes);

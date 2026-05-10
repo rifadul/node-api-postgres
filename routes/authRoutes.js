@@ -1,3 +1,4 @@
+import csrf from 'csurf'
 import express from 'express'
 import validate from '../middleware/validate.js'
 import { registerSchema, loginSchema, changePasswordSchema, forgotPasswordSchema, resetPasswordSchema, refreshTokenSchema } from '../validators/auth.validator.js'
@@ -5,6 +6,7 @@ import { register, login, changePassword, forgotPassword, resetPassword, logout,
 import authMiddleware from '../middleware/authMiddleware.js'
 
 const router = express.Router()
+const csrfProtection = csrf({ cookie: true })
 
 
 router.post('/register', validate(registerSchema), register)
@@ -25,5 +27,11 @@ router.post(
     authMiddleware,
     logout
 )
+
+router.get('/csrf-token', csrfProtection, (req, res) => {
+    res.json({
+        csrfToken: req.csrfToken(),
+    })
+})
 
 export default router
