@@ -1,6 +1,6 @@
 # node-api-postgres
 
-A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It provides user management with JWT-based authentication delivered through **httpOnly cookies**, **CSRF protection**, refresh-token rotation with SHA-256 hashing and reuse detection, password recovery, soft-delete + restore, request validation, audit logging, rate limiting, and a global error handler.
+A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It provides user management with JWT-based authentication delivered through **httpOnly cookies**, **CSRF protection**, refresh-token rotation with SHA-256 hashing and reuse detection, password recovery, soft-delete + restore, request validation, audit logging, rate limiting, security headers, request logging, **Swagger/OpenAPI docs**, and a global error handler.
 
 ## Tech Stack
 
@@ -10,7 +10,9 @@ A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It prov
 - **Auth:** `jsonwebtoken` (access + refresh JWTs in httpOnly cookies) + `bcrypt`
 - **Cookies/CSRF:** `cookie-parser`, `csurf`
 - **Validation:** `joi` & `zod`
-- **Security/Infra:** `cors` (origin allowlist + credentials), `express-rate-limit`, API-key middleware
+- **Security/Infra:** `cors` (origin allowlist + credentials), `helmet`, `express-rate-limit`
+- **Logging:** `morgan` (dev only)
+- **API Docs:** `swagger-jsdoc`, `swagger-ui-express`
 - **Dev:** `nodemon`
 
 ## Project Structure
@@ -18,6 +20,8 @@ A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It prov
 ```
 .
 ├── app.js                      # Express app entry point
+├── config/
+│   └── swagger.js              # Swagger / OpenAPI spec
 ├── constants/
 │   ├── allowedOrigins.js       # CORS origin allowlist
 │   ├── auditActions.js         # Audit-log action enum
@@ -28,7 +32,6 @@ A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It prov
 ├── db/
 │   └── index.js                # PostgreSQL pool
 ├── middleware/
-│   ├── apiKey.js               # x-api-key gate
 │   ├── asyncHandler.js         # Async wrapper
 │   ├── authMiddleware.js       # JWT auth from accessToken cookie
 │   ├── authorizeSelf.js        # Owner-only guard
@@ -89,13 +92,12 @@ DB_PASSWORD=your_db_password
 DB_PORT=5432
 
 PORT=3000
-API_KEY=your_api_key
 
 # Separate secrets for access and refresh tokens
 JWT_ACCESS_SECRET=your_long_random_access_secret
 JWT_REFRESH_SECRET=your_long_random_refresh_secret
 
-# Set to "production" to mark cookies as Secure
+# "development" enables morgan request logging; "production" marks cookies as Secure
 NODE_ENV=development
 ```
 
@@ -138,7 +140,7 @@ yarn dev
 # or: npm run dev
 ```
 
-Server runs at `http://localhost:3000`.
+Server runs at `http://localhost:3000`. Interactive API docs are available at `http://localhost:3000/api-docs`.
 
 ## Global Middleware
 
@@ -147,13 +149,18 @@ Every request flows through (in order):
 1. **CORS** — origin allowlist from [constants/allowedOrigins.js](constants/allowedOrigins.js); `credentials: true` so cookies are sent cross-origin.
 2. **`cookie-parser`** — parses `accessToken`, `refreshToken`, and the CSRF cookie.
 3. **JSON / urlencoded body parsers** — JSON limited to 10kb.
-4. **CSRF (`csurf`)** — applied to all non-`GET/HEAD/OPTIONS` requests. Clients must send the token (default header `X-CSRF-Token` / `csrf-token`) on every state-changing call.
+4. **CSRF (`csurf`)** — applied to all non-`GET/HEAD/OPTIONS` requests, except `GET /auth/csrf-token`. Clients must send the token (default header `X-CSRF-Token` / `csrf-token`) on every state-changing call.
 5. **Rate limit** — 100 requests per 15 minutes per IP.
-6. **`x-api-key`** header — must match `API_KEY` from `.env`.
+6. **`helmet`** — sets a hardened set of HTTP security headers (CSP, HSTS-ready, frameguard, etc.). `x-powered-by` is also disabled at the app level.
+7. **`morgan`** — concise request logging, enabled only when `NODE_ENV=development`.
 
 Protected routes additionally require the `accessToken` cookie (set automatically on login/refresh).
 
 ## API Endpoints
+
+### Docs — `/api-docs`
+
+Swagger UI is mounted at `/api-docs` and is generated from JSDoc annotations in the route files via [config/swagger.js](config/swagger.js).
 
 ### Auth — `/auth`
 
@@ -189,7 +196,6 @@ These examples use `cookies.txt` to persist the auth + CSRF cookies between call
 
 ```bash
 curl http://localhost:3000/auth/csrf-token \
-  -H "x-api-key: your_api_key" \
   -c cookies.txt
 # => { "csrfToken": "<token>" }
 ```
@@ -199,7 +205,6 @@ curl http://localhost:3000/auth/csrf-token \
 ```bash
 curl -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
-  -H "x-api-key: your_api_key" \
   -H "X-CSRF-Token: <token>" \
   -b cookies.txt -c cookies.txt \
   -d '{"name":"Siam","email":"siam@example.com","password":"Secret123!"}'
@@ -210,7 +215,6 @@ curl -X POST http://localhost:3000/auth/register \
 ```bash
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
-  -H "x-api-key: your_api_key" \
   -H "X-CSRF-Token: <token>" \
   -b cookies.txt -c cookies.txt \
   -d '{"email":"siam@example.com","password":"Secret123!"}'
@@ -220,7 +224,6 @@ curl -X POST http://localhost:3000/auth/login \
 
 ```bash
 curl -X POST http://localhost:3000/auth/refresh-token \
-  -H "x-api-key: your_api_key" \
   -H "X-CSRF-Token: <token>" \
   -b cookies.txt -c cookies.txt
 ```
@@ -229,7 +232,6 @@ curl -X POST http://localhost:3000/auth/refresh-token \
 
 ```bash
 curl -X POST http://localhost:3000/auth/logout \
-  -H "x-api-key: your_api_key" \
   -H "X-CSRF-Token: <token>" \
   -b cookies.txt -c cookies.txt
 ```
@@ -238,7 +240,6 @@ curl -X POST http://localhost:3000/auth/logout \
 
 ```bash
 curl "http://localhost:3000/users?page=1&limit=10" \
-  -H "x-api-key: your_api_key" \
   -b cookies.txt
 ```
 
@@ -281,8 +282,15 @@ Cookie flags (see [utils/cookies.js](utils/cookies.js)): `httpOnly`, `sameSite: 
 `csurf` is mounted globally with cookie-stored tokens. Behavior:
 
 - `GET`, `HEAD`, and `OPTIONS` requests bypass the check.
+- `GET /auth/csrf-token` is exempt from the CSRF check itself but is the route that issues the token.
 - All other methods require the token from `GET /auth/csrf-token`, sent in the `X-CSRF-Token` (or `csrf-token`) header. The CSRF cookie must accompany the request.
 - Missing/invalid tokens return `403 EBADCSRFTOKEN` from the global error handler.
+
+## API Documentation (Swagger)
+
+Swagger UI is served at [http://localhost:3000/api-docs](http://localhost:3000/api-docs). The OpenAPI 3.0 spec is generated by `swagger-jsdoc` from `@swagger` JSDoc blocks placed above route handlers in [routes/](routes/), with the base definition in [config/swagger.js](config/swagger.js).
+
+To document a new endpoint, add a `@swagger` JSDoc block above its handler — it will be picked up automatically on next start.
 
 ## Audit Logging
 
@@ -303,6 +311,7 @@ Each entry stores the actor, action, entity type/id, and a JSON `metadata` blob.
 - Refresh tokens are stored as a **SHA-256 hash** ([utils/hash.js](utils/hash.js)) and rotated on every refresh.
 - Refresh-token reuse triggers full session invalidation for that user and an audit-log entry.
 - Reset tokens are also stored as a SHA-256 hash; only the raw token leaves the server, and they expire after **15 minutes**.
+- `helmet` sets hardened HTTP security headers; `x-powered-by` is disabled.
 - CORS uses an explicit allowlist ([constants/allowedOrigins.js](constants/allowedOrigins.js)) with `credentials: true`.
 - `forgot-password` does **not** reveal whether an email exists.
 - `.env` is git-ignored — never commit secrets.
