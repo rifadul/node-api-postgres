@@ -1,15 +1,16 @@
 # node-api-postgres
 
-A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It provides user management with JWT-based authentication (access + refresh tokens), password recovery, soft-delete + restore, request validation, audit logging, rate limiting, and a global error handler.
+A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It provides user management with JWT-based authentication delivered through **httpOnly cookies**, **CSRF protection**, refresh-token rotation with SHA-256 hashing and reuse detection, password recovery, soft-delete + restore, request validation, audit logging, rate limiting, and a global error handler.
 
 ## Tech Stack
 
 - **Runtime:** Node.js (ESM — `"type": "module"`)
 - **Framework:** Express 5
 - **Database:** PostgreSQL via `pg`
-- **Auth:** `jsonwebtoken` (access + refresh JWTs) + `bcrypt`
+- **Auth:** `jsonwebtoken` (access + refresh JWTs in httpOnly cookies) + `bcrypt`
+- **Cookies/CSRF:** `cookie-parser`, `csurf`
 - **Validation:** `joi` & `zod`
-- **Security/Infra:** `cors`, `express-rate-limit`, API-key middleware
+- **Security/Infra:** `cors` (origin allowlist + credentials), `express-rate-limit`, API-key middleware
 - **Dev:** `nodemon`
 
 ## Project Structure
@@ -18,6 +19,7 @@ A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It prov
 .
 ├── app.js                      # Express app entry point
 ├── constants/
+│   ├── allowedOrigins.js       # CORS origin allowlist
 │   ├── auditActions.js         # Audit-log action enum
 │   └── errorCodes.js           # Centralized error codes
 ├── controllers/
@@ -28,14 +30,14 @@ A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It prov
 ├── middleware/
 │   ├── apiKey.js               # x-api-key gate
 │   ├── asyncHandler.js         # Async wrapper
-│   ├── authMiddleware.js       # JWT Bearer auth
+│   ├── authMiddleware.js       # JWT auth from accessToken cookie
 │   ├── authorizeSelf.js        # Owner-only guard
 │   ├── errorHandler.js         # Global error handler
 │   ├── validate.js             # Schema validator
 │   └── validateId.js
 ├── models/
 │   ├── auditLogModel.js        # Audit-log SQL queries
-│   └── userModel.js            # User SQL queries (incl. refresh token)
+│   └── userModel.js            # User SQL queries (incl. hashed refresh token)
 ├── routes/
 │   ├── authRoutes.js
 │   └── userRoutes.js
@@ -46,7 +48,9 @@ A RESTful API built with **Node.js**, **Express 5**, and **PostgreSQL**. It prov
 │   └── userService.js
 ├── utils/
 │   ├── AppError.js             # Custom error class
+│   ├── cookies.js              # Shared cookie options (access/refresh)
 │   ├── formatZodError.js
+│   ├── hash.js                 # SHA-256 token hashing
 │   ├── jwt.js                  # Access/refresh token sign & verify
 │   ├── resetToken.js           # Reset-token generation
 │   └── response.js             # Unified success response
@@ -90,9 +94,12 @@ API_KEY=your_api_key
 # Separate secrets for access and refresh tokens
 JWT_ACCESS_SECRET=your_long_random_access_secret
 JWT_REFRESH_SECRET=your_long_random_refresh_secret
+
+# Set to "production" to mark cookies as Secure
+NODE_ENV=development
 ```
 
-Access tokens expire in **5 minutes**; refresh tokens expire in **1 day**.
+JWTs expire in **5 minutes** (access) and **1 day** (refresh). The cookies that carry them have `maxAge` of **15 minutes** and **7 days** respectively, so the JWT lifetime is the binding limit.
 
 ### 3. Database Schema
 
@@ -135,28 +142,31 @@ Server runs at `http://localhost:3000`.
 
 ## Global Middleware
 
-Every request must pass through:
+Every request flows through (in order):
 
-1. **`x-api-key`** header — must match `API_KEY` from `.env`.
-2. **Rate limit** — 100 requests per 15 minutes per IP.
-3. **JSON body parser** — limited to 10kb.
-4. **CORS** — enabled for all origins.
+1. **CORS** — origin allowlist from [constants/allowedOrigins.js](constants/allowedOrigins.js); `credentials: true` so cookies are sent cross-origin.
+2. **`cookie-parser`** — parses `accessToken`, `refreshToken`, and the CSRF cookie.
+3. **JSON / urlencoded body parsers** — JSON limited to 10kb.
+4. **CSRF (`csurf`)** — applied to all non-`GET/HEAD/OPTIONS` requests. Clients must send the token (default header `X-CSRF-Token` / `csrf-token`) on every state-changing call.
+5. **Rate limit** — 100 requests per 15 minutes per IP.
+6. **`x-api-key`** header — must match `API_KEY` from `.env`.
 
-Protected routes additionally require an `Authorization: Bearer <accessToken>` header.
+Protected routes additionally require the `accessToken` cookie (set automatically on login/refresh).
 
 ## API Endpoints
 
 ### Auth — `/auth`
 
-| Method | Path                | Auth | Description                                       |
-| ------ | ------------------- | ---- | ------------------------------------------------- |
-| POST   | `/register`         | —    | Register a new user                               |
-| POST   | `/login`            | —    | Log in, returns access + refresh tokens           |
-| POST   | `/refresh-token`    | —    | Exchange a refresh token for a new access token   |
-| POST   | `/logout`           | JWT  | Invalidate the current refresh token              |
-| POST   | `/change-password`  | JWT  | Change password (requires current password)       |
-| POST   | `/forgot-password`  | —    | Generate password reset token (logged to console) |
-| POST   | `/reset-password`   | —    | Reset password using token                        |
+| Method | Path                | Auth | Description                                                  |
+| ------ | ------------------- | ---- | ------------------------------------------------------------ |
+| GET    | `/csrf-token`       | —    | Issue a CSRF token (sets the CSRF cookie, returns the token) |
+| POST   | `/register`         | —    | Register a new user                                          |
+| POST   | `/login`            | —    | Log in, sets `accessToken` + `refreshToken` cookies          |
+| POST   | `/refresh-token`    | —    | Rotate tokens using the `refreshToken` cookie                |
+| POST   | `/logout`           | JWT  | Invalidate the refresh token and clear cookies               |
+| POST   | `/change-password`  | JWT  | Change password (requires current password)                  |
+| POST   | `/forgot-password`  | —    | Generate password reset token (logged to console)            |
+| POST   | `/reset-password`   | —    | Reset password using token                                   |
 
 ### Users — `/users`
 
@@ -173,31 +183,46 @@ Protected routes additionally require an `Authorization: Bearer <accessToken>` h
 
 ## Example Requests
 
+These examples use `cookies.txt` to persist the auth + CSRF cookies between calls.
+
+**Fetch a CSRF token** (must be done before any POST/PUT/PATCH/DELETE)
+
+```bash
+curl http://localhost:3000/auth/csrf-token \
+  -H "x-api-key: your_api_key" \
+  -c cookies.txt
+# => { "csrfToken": "<token>" }
+```
+
 **Register**
 
 ```bash
 curl -X POST http://localhost:3000/auth/register \
   -H "Content-Type: application/json" \
   -H "x-api-key: your_api_key" \
+  -H "X-CSRF-Token: <token>" \
+  -b cookies.txt -c cookies.txt \
   -d '{"name":"Siam","email":"siam@example.com","password":"Secret123!"}'
 ```
 
-**Login** (returns `accessToken` + `refreshToken`)
+**Login** (sets `accessToken` + `refreshToken` cookies)
 
 ```bash
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -H "x-api-key: your_api_key" \
+  -H "X-CSRF-Token: <token>" \
+  -b cookies.txt -c cookies.txt \
   -d '{"email":"siam@example.com","password":"Secret123!"}'
 ```
 
-**Refresh access token**
+**Refresh tokens** (reads `refreshToken` cookie, rotates both cookies)
 
 ```bash
 curl -X POST http://localhost:3000/auth/refresh-token \
-  -H "Content-Type: application/json" \
   -H "x-api-key: your_api_key" \
-  -d '{"refreshToken":"<refreshToken>"}'
+  -H "X-CSRF-Token: <token>" \
+  -b cookies.txt -c cookies.txt
 ```
 
 **Logout**
@@ -205,15 +230,16 @@ curl -X POST http://localhost:3000/auth/refresh-token \
 ```bash
 curl -X POST http://localhost:3000/auth/logout \
   -H "x-api-key: your_api_key" \
-  -H "Authorization: Bearer <accessToken>"
+  -H "X-CSRF-Token: <token>" \
+  -b cookies.txt -c cookies.txt
 ```
 
-**List users**
+**List users** (GET — no CSRF token required)
 
 ```bash
-curl http://localhost:3000/users?page=1&limit=10 \
+curl "http://localhost:3000/users?page=1&limit=10" \
   -H "x-api-key: your_api_key" \
-  -H "Authorization: Bearer <accessToken>"
+  -b cookies.txt
 ```
 
 ## Response Format
@@ -241,18 +267,31 @@ Errors are normalized through the global handler with `AppError`:
 
 ## Authentication Flow
 
-1. **Login** returns a short-lived `accessToken` (5 min) and a longer-lived `refreshToken` (1 day). The refresh token is also persisted on the user row.
-2. Send `Authorization: Bearer <accessToken>` on protected routes.
-3. When the access token expires, call `POST /auth/refresh-token` with the stored refresh token to receive a new access token.
-4. **Logout** clears the refresh token in the database, invalidating future refreshes.
+1. **Get CSRF token** — `GET /auth/csrf-token` sets the CSRF cookie and returns the token. Send it on every state-changing request.
+2. **Login** — sets two httpOnly cookies: `accessToken` (15-min cookie / 5-min JWT) and `refreshToken` (7-day cookie / 1-day JWT). The refresh token is stored server-side as a SHA-256 hash.
+3. **Authenticated requests** — the browser sends the `accessToken` cookie automatically; [middleware/authMiddleware.js](middleware/authMiddleware.js) verifies it and populates `req.user`.
+4. **Refresh** — when the access token expires, call `POST /auth/refresh-token`. The server hashes the incoming refresh token, looks it up, issues new tokens, and rotates both cookies.
+5. **Token-reuse detection** — if a refresh token is presented but no matching hash is found, all of that user's sessions are invalidated (`clearRefreshToken`) and a `TOKEN_REUSE_DETECTED` audit entry is written.
+6. **Logout** — clears the stored refresh token hash and both cookies.
+
+Cookie flags (see [utils/cookies.js](utils/cookies.js)): `httpOnly`, `sameSite: 'strict'`, and `secure` when `NODE_ENV=production`.
+
+## CSRF Protection
+
+`csurf` is mounted globally with cookie-stored tokens. Behavior:
+
+- `GET`, `HEAD`, and `OPTIONS` requests bypass the check.
+- All other methods require the token from `GET /auth/csrf-token`, sent in the `X-CSRF-Token` (or `csrf-token`) header. The CSRF cookie must accompany the request.
+- Missing/invalid tokens return `403 EBADCSRFTOKEN` from the global error handler.
 
 ## Audit Logging
 
-Sensitive actions are recorded in the `audit_logs` table via a fire-and-forget service (`services/auditLogService.js`). Failures are logged but never break the request. Tracked actions are defined in `constants/auditActions.js`:
+Sensitive actions are recorded in the `audit_logs` table via a fire-and-forget service ([services/auditLogService.js](services/auditLogService.js)). Failures are logged but never break the request. Tracked actions are defined in [constants/auditActions.js](constants/auditActions.js):
 
 - `LOGIN`
 - `CREATE_USER`, `UPDATE_USER`, `DELETE_USER`, `RESTORE_USER`
 - `CHANGE_PASSWORD`, `RESET_PASSWORD`
+- `TOKEN_REUSE_DETECTED`
 
 Each entry stores the actor, action, entity type/id, and a JSON `metadata` blob.
 
@@ -260,9 +299,11 @@ Each entry stores the actor, action, entity type/id, and a JSON `metadata` blob.
 
 - Passwords are hashed with **bcrypt** (cost 10).
 - Access and refresh tokens use **separate secrets** (`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`).
-- Refresh tokens are persisted server-side and cleared on logout, allowing revocation.
-- Reset tokens are stored as a **SHA-256 hash**; only the raw token leaves the server.
-- Reset tokens expire after **15 minutes**.
+- Tokens travel in **httpOnly + sameSite=strict** cookies (Secure in production), so they are not reachable from JavaScript.
+- Refresh tokens are stored as a **SHA-256 hash** ([utils/hash.js](utils/hash.js)) and rotated on every refresh.
+- Refresh-token reuse triggers full session invalidation for that user and an audit-log entry.
+- Reset tokens are also stored as a SHA-256 hash; only the raw token leaves the server, and they expire after **15 minutes**.
+- CORS uses an explicit allowlist ([constants/allowedOrigins.js](constants/allowedOrigins.js)) with `credentials: true`.
 - `forgot-password` does **not** reveal whether an email exists.
 - `.env` is git-ignored — never commit secrets.
 
