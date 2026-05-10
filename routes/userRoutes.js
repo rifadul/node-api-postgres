@@ -1,3 +1,19 @@
+/**
+ * @swagger
+ * /users:
+ *   get:
+ *     summary: Get all users
+ *     tags:
+ *       - Users
+ *     security:
+ *       - apiKeyAuth: []
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: List of users
+ */
+
+
 import express from 'express'
 
 const router = express.Router() // ✅ THIS LINE IS MISSING

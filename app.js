@@ -3,14 +3,17 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import csrf from 'csurf';
-
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './config/swagger.js';
 import userRoutes from './routes/userRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import errorHandler from './middleware/errorHandler.js';
-import apiKeyMiddleware from './middleware/apiKey.js';
 import { allowedOrigins } from './constants/allowedOrigins.js';
+import helmet from 'helmet'
+import morgan from 'morgan';
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 3000;
 
 const limiter = rateLimit({
@@ -18,7 +21,7 @@ const limiter = rateLimit({
     max: 100,
     standardHeaders: true,
     legacyHeaders: false,
-    message: 'Too many requests, please try again later.'
+    message: 'Too many requests, please try again later.',
 });
 
 const csrfProtection = csrf({
@@ -34,28 +37,54 @@ app.use(cors({
             callback(new Error('Not allowed by CORS'));
         }
     },
-    credentials: true
+    credentials: true,
 }));
 
-// ✅ Correct order
-app.use(cookieParser());      // 🔥 FIRST
+// ✅ parsers
+app.use(cookieParser());
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ CSRF (conditional)
+// ✅ csrf protection
 app.use((req, res, next) => {
+    // skip safe methods
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-        return next()
+        return next();
     }
-    return csrfProtection(req, res, next)
-})
 
+    // skip csrf token route
+    if (req.originalUrl === '/auth/csrf-token') {
+        return next();
+    }
+
+    return csrfProtection(req, res, next);
+});
+
+// ✅ rate limit
 app.use(limiter);
-app.use(apiKeyMiddleware);
 
-app.use('/users', userRoutes);
+
+// ✅ set security headers
+app.use(helmet());
+
+// ✅ logging
+if (process.env.NODE_ENV === 'development') {
+    app.use(morgan('dev'))
+}
+
+// ✅ public routes
 app.use('/auth', authRoutes);
 
+// ✅ protected frontend routes
+app.use('/users', userRoutes);
+
+// ✅ swagger
+app.use('/api-docs',
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec)
+);
+
+// ✅ error handler
 app.use(errorHandler);
 
 app.listen(PORT, () => {
