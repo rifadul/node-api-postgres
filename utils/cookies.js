@@ -1,4 +1,4 @@
-import { cookieOptions } from "./cookieOptions"
+import { cookieOptions } from './cookieOptions.js'
 
 export const accessCookieOptions = {
     ...cookieOptions,
