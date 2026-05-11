@@ -31,10 +31,6 @@ const csrfProtection = csrf({
 // ✅ CORS
 app.use(cors({
     origin: (origin, callback) => {
-        console.log({ origin, callback });
-        console.log('allowedOrigins.includes(origin)', allowedOrigins.includes(origin));
-
-
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
