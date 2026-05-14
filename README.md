@@ -105,7 +105,7 @@ JWTs expire in **5 minutes** (access) and **1 day** (refresh). The cookies that 
 Create the database and tables:
 
 ```sql
-CREATE DATABASE crud_api;
+CREATE DATABASE node_api;
 
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
